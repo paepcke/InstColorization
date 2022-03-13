@@ -87,23 +87,38 @@ class FusionModel(BaseModel):
         self.fake_B_reg = self.netGF(self.full_real_A, self.full_hint_B, self.full_mask_B, feature_map, self.box_info_list)
         
     def save_current_imgs(self, path):
-        out_img = torch.clamp(util.lab2rgb(torch.cat((self.full_real_A.type(torch.cuda.FloatTensor), self.fake_B_reg.type(torch.cuda.FloatTensor)), dim=1), self.opt), 0.0, 1.0)
+        if self.full_real_A.device == torch.device('cpu'):
+            out_img = torch.clamp(util.lab2rgb(torch.cat((self.full_real_A.type(torch.FloatTensor), 
+                                                          self.fake_B_reg.type(torch.FloatTensor)), 
+                                                          dim=1), self.opt), 0.0, 1.0)
+        else:
+            out_img = torch.clamp(util.lab2rgb(torch.cat((self.full_real_A.type(torch.cuda.FloatTensor), 
+                                                          self.fake_B_reg.type(torch.cuda.FloatTensor)), 
+                                                          dim=1), self.opt), 0.0, 1.0)
         out_img = np.transpose(out_img.cpu().data.numpy()[0], (1, 2, 0))
         io.imsave(path, img_as_ubyte(out_img))
 
     def setup_to_test(self, fusion_weight_path):
         GF_path = 'checkpoints/{0}/latest_net_GF.pth'.format(fusion_weight_path)
         print('load Fusion model from %s' % GF_path)
-        GF_state_dict = torch.load(GF_path)
+        #***********
+        if torch.cuda.is_available():
+            dest_device = 'cuda'
+        else:
+            dest_device = 'cpu'
+        GF_state_dict = torch.load(GF_path, map_location=dest_device)
         
         # G_path = 'checkpoints/coco_finetuned_mask_256/latest_net_G.pth' # fine tuned on cocostuff
         G_path = 'checkpoints/{0}/latest_net_G.pth'.format(fusion_weight_path)
-        G_state_dict = torch.load(G_path)
+        #G_state_dict = torch.load(G_path)
+        G_state_dict = torch.load(G_path, map_location=dest_device)
+        
 
         # GComp_path = 'checkpoints/siggraph_retrained/latest_net_G.pth' # original net
         # GComp_path = 'checkpoints/coco_finetuned_mask_256/latest_net_GComp.pth' # fine tuned on cocostuff
         GComp_path = 'checkpoints/{0}/latest_net_GComp.pth'.format(fusion_weight_path)
-        GComp_state_dict = torch.load(GComp_path)
+        #GComp_state_dict = torch.load(GComp_path)
+        GComp_state_dict = torch.load(GComp_path, map_location=dest_device)
 
         self.netGF.load_state_dict(GF_state_dict, strict=False)
         self.netG.module.load_state_dict(G_state_dict, strict=False)
